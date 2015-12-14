@@ -11,7 +11,7 @@ install_requires = [
     'filelock',
     'nose',
     'numpy>=1.9.0',
-    'protobuf',
+    'protobuf>=3.0.0',
     'six>=1.9.0']
 
 
