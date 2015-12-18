@@ -24,8 +24,7 @@ Requirements for some features:
 - cuDNN support
   - cuDNN v2, v3
 - Caffe model support
-  - Python 2.7.6+ (Py3 is not supported)
-  - Protocol Buffers (pip install protobuf)
+  - Protocol Buffers 3.0.0b1.post2+ (pip install protobuf)
 - Testing utilities
   - Mock
   - Nose
