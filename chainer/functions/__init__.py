@@ -3,6 +3,7 @@
 from chainer.functions.activation import clipped_relu
 from chainer.functions.activation import elu
 from chainer.functions.activation import leaky_relu
+from chainer.functions.activation import log_softmax
 from chainer.functions.activation import lstm
 from chainer.functions.activation import prelu
 from chainer.functions.activation import relu
@@ -72,6 +73,8 @@ ELU = elu.ELU
 elu = elu.elu
 LeakyReLU = leaky_relu.LeakyReLU
 leaky_relu = leaky_relu.leaky_relu
+LogSoftmax = log_softmax.LogSoftmax
+log_softmax = log_softmax.log_softmax
 LSTM = lstm.LSTM
 lstm = lstm.lstm
 prelu = prelu.prelu
