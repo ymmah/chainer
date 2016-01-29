@@ -35,6 +35,7 @@ setup(
     author_email='tokui@preferred.jp',
     url='http://chainer.org/',
     packages=['chainer',
+              'chainer.datasets',
               'chainer.functions',
               'chainer.functions.activation',
               'chainer.functions.array',
