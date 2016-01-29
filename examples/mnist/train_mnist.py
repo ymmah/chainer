@@ -8,115 +8,151 @@ from __future__ import print_function
 import argparse
 
 import numpy as np
-import six
 
 import chainer
 from chainer import computational_graph
 from chainer import cuda
+from chainer.datasets import mnist
+import chainer.functions as F
 import chainer.links as L
 from chainer import optimizers
 from chainer import serializers
+from chainer.utils import log
+from chainer.utils import summary
 
-import data
-import net
+
+class MnistMLP(chainer.Chain):
+
+    """An example of multi-layer perceptron for MNIST dataset.
+
+    This is a very simple implementation of an MLP. You can modify this code to
+    build your own neural net.
+
+    """
+    def __init__(self, n_in, n_units, n_out):
+        super(MnistMLP, self).__init__(
+            l1=L.Linear(n_in, n_units),
+            l2=L.Linear(n_units, n_units),
+            l3=L.Linear(n_units, n_out),
+        )
+
+    def __call__(self, x):
+        h1 = F.relu(self.l1(x))
+        h2 = F.relu(self.l2(h1))
+        return self.l3(h2)
 
 
-parser = argparse.ArgumentParser(description='Chainer example: MNIST')
-parser.add_argument('--initmodel', '-m', default='',
-                    help='Initialize the model from given file')
-parser.add_argument('--resume', '-r', default='',
-                    help='Resume the optimization from snapshot')
-parser.add_argument('--net', '-n', choices=('simple', 'parallel'),
-                    default='simple', help='Network type')
-parser.add_argument('--gpu', '-g', default=-1, type=int,
-                    help='GPU ID (negative value indicates CPU)')
-args = parser.parse_args()
+class MnistMLPParallel(chainer.Chain):
 
-batchsize = 100
-n_epoch = 20
-n_units = 1000
+    """An example of model-parallel MLP.
 
-# Prepare dataset
-print('load MNIST dataset')
-mnist = data.load_mnist_data()
-mnist['data'] = mnist['data'].astype(np.float32)
-mnist['data'] /= 255
-mnist['target'] = mnist['target'].astype(np.int32)
+    This chain combines four small MLPs on two different devices.
 
-N = 60000
-x_train, x_test = np.split(mnist['data'],   [N])
-y_train, y_test = np.split(mnist['target'], [N])
-N_test = y_test.size
+    """
+    def __init__(self, n_in, n_units, n_out):
+        super(MnistMLPParallel, self).__init__(
+            first0=MnistMLP(n_in, n_units // 2, n_units).to_gpu(0),
+            first1=MnistMLP(n_in, n_units // 2, n_units).to_gpu(1),
+            second0=MnistMLP(n_units, n_units // 2, n_out).to_gpu(0),
+            second1=MnistMLP(n_units, n_units // 2, n_out).to_gpu(1),
+        )
 
-# Prepare multi-layer perceptron model, defined in net.py
-if args.net == 'simple':
-    model = L.Classifier(net.MnistMLP(784, n_units, 10))
-    if args.gpu >= 0:
-        cuda.get_device(args.gpu).use()
-        model.to_gpu()
-    xp = np if args.gpu < 0 else cuda.cupy
-elif args.net == 'parallel':
-    cuda.check_cuda_available()
-    model = L.Classifier(net.MnistMLPParallel(784, n_units, 10))
-    xp = cuda.cupy
+    def __call__(self, x):
+        # assume x is on GPU 0
+        x1 = F.copy(x, 1)
 
-# Setup optimizer
-optimizer = optimizers.Adam()
-optimizer.setup(model)
+        z0 = self.first0(x)
+        z1 = self.first1(x1)
 
-# Init/Resume
-if args.initmodel:
-    print('Load model from', args.initmodel)
-    serializers.load_npz(args.initmodel, model)
-if args.resume:
-    print('Load optimizer state from', args.resume)
-    serializers.load_npz(args.resume, optimizer)
+        # sync
+        h0 = z0 + F.copy(z1, 0)
+        h1 = z1 + F.copy(z0, 1)
 
-# Learning loop
-for epoch in six.moves.range(1, n_epoch + 1):
-    print('epoch', epoch)
+        y0 = self.second0(F.relu(h0))
+        y1 = self.second1(F.relu(h1))
 
-    # training
-    perm = np.random.permutation(N)
-    sum_accuracy = 0
-    sum_loss = 0
-    for i in six.moves.range(0, N, batchsize):
-        x = chainer.Variable(xp.asarray(x_train[perm[i:i + batchsize]]))
-        t = chainer.Variable(xp.asarray(y_train[perm[i:i + batchsize]]))
+        # sync
+        y = y0 + F.copy(y1, 0)
+        return y
 
-        # Pass the loss function (Classifier defines it) and its arguments
-        optimizer.update(model, x, t)
 
-        if epoch == 1 and i == 0:
+class TrainingState(object):
+
+    def __init__(self, model, optimizer, dataiter):
+        self._model = model
+        self._optimizer = optimizer
+        self._dataiter = dataiter
+
+    def serialize(self, serializer):
+        self._model.serialize(serializer['model'])
+        self._optimizer.serialize(serializer['optimizer'])
+        self._dataiter.serialize(serializer['dataiter'])
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Chainer example: MNIST')
+    parser.add_argument('--gpu', '-g', default=-1, type=int,
+                        help='GPU ID (negative value indicates CPU)')
+    parser.add_argument('--net', '-n', choices=('simple', 'parallel'),
+                        default='simple', help='Network type')
+    parser.add_argument('--resume', '-r', default='',
+                        help='Resume the optimization from snapshot')
+    args = parser.parse_args()
+
+    train = mnist.MnistTraining()
+    test = mnist.MnistTest()
+
+    train_iter = train.get_batch_iterator(batchsize=100)
+
+    if args.net == 'simple':
+        model = L.Classifier(MnistMLP(784, 1000, 10))
+        xp = np if args.gpu < 0 else cuda.cupy
+        if xp is cuda.cupy:
+            model.to_gpu(args.gpu)
+    elif args.net == 'parallel':
+        model = L.Classifier(MnistMLPParallel(784, 1000, 10))
+        xp = cuda.cupy
+
+    optimizer = optimizers.Adam()
+    optimizer.setup(model)
+
+    state = TrainingState(model, optimizer, train_iter)
+    if args.resume:
+        serializers.load_npz(args.resume, state)
+
+    epoch = train_iter.epoch
+    summ = summary.DictSummary()
+    for x, t in train_iter:
+        optimizer.update(model, chainer.Variable(xp.asarray(x)),
+                         chainer.Variable(xp.asarray(t)))
+        summ.add({'loss': model.loss.data, 'accuracy': model.accuracy.data})
+
+        if optimizer.t == 1:
             with open('graph.dot', 'w') as o:
                 g = computational_graph.build_computational_graph(
-                    (model.loss, ), remove_split=True)
+                    (model.loss,))
                 o.write(g.dump())
-            print('graph generated')
 
-        sum_loss += float(model.loss.data) * len(t.data)
-        sum_accuracy += float(model.accuracy.data) * len(t.data)
+        if epoch != train_iter.epoch:
+            epoch = train_iter.epoch
+            print('epoch {} result'.format(epoch))
+            print(' train:', log.str_result(summ.mean))
+            summ.clear()
 
-    print('train mean loss={}, accuracy={}'.format(
-        sum_loss / N, sum_accuracy / N))
+            test_summ = summary.DictSummary()
+            for x, t in test.get_batch_iterator(batchsize=100, repeat=False,
+                                                auto_shuffle=False):
+                model(chainer.Variable(xp.asarray(x), volatile='on'),
+                      chainer.Variable(xp.asarray(t), volatile='on'))
+                test_summ.add({'loss': model.loss.data,
+                               'accuracy': model.accuracy.data})
+            print('  test:', log.str_result(test_summ.mean))
 
-    # evaluation
-    sum_accuracy = 0
-    sum_loss = 0
-    for i in six.moves.range(0, N_test, batchsize):
-        x = chainer.Variable(xp.asarray(x_test[i:i + batchsize]),
-                             volatile='on')
-        t = chainer.Variable(xp.asarray(y_test[i:i + batchsize]),
-                             volatile='on')
-        loss = model(x, t)
-        sum_loss += float(loss.data) * len(t.data)
-        sum_accuracy += float(model.accuracy.data) * len(t.data)
+            serializers.save_npz('snapshot', state)
 
-    print('test  mean loss={}, accuracy={}'.format(
-        sum_loss / N_test, sum_accuracy / N_test))
+        if epoch == 20:
+            break
 
-# Save the model and the optimizer
-print('save the model')
-serializers.save_npz('mlp.model', model)
-print('save the optimizer')
-serializers.save_npz('mlp.state', optimizer)
+
+if __name__ == '__main__':
+    main()

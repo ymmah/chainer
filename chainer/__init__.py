@@ -1,5 +1,6 @@
 import pkg_resources
 
+from chainer import dataset
 from chainer import flag
 from chainer import function
 from chainer import function_set
@@ -15,6 +16,7 @@ __version__ = pkg_resources.get_distribution('chainer').version
 AbstractSerializer = serializer.AbstractSerializer
 Chain = link.Chain
 ChainList = link.ChainList
+Dataset = dataset.Dataset
 Deserializer = serializer.Deserializer
 Flag = flag.Flag
 Function = function.Function

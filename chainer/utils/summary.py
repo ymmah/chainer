@@ -57,6 +57,9 @@ class DictSummary(object):
             if isinstance(value, (float, numpy.ndarray, cuda.ndarray)):
                 self._summaries[key].add(value)
 
+    def clear(self):
+        self._summaries.clear()
+
     @property
     def mean(self):
         return {key: summary.mean
@@ -72,6 +75,6 @@ class DictSummary(object):
         return {key: summay.std
                 for key, summary in six.iteritems(self._summaries)}
 
-    def serializer(self, serialize):
+    def serialize(self, serializer):
         for name, summary in six.iteritems(self._summaries):
             summary.serialize(serializer[name])
