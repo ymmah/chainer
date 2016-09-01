@@ -1,5 +1,3 @@
-import unittest
-
 import numpy
 
 import chainer.functions as F
@@ -15,9 +13,7 @@ def make_data(dtype, shape):
 #
 # sqrt
 
-@testing.unary_function_test(F.sqrt, make_data=make_data)
-class TestSqrt(unittest.TestCase):
-    pass
+TestSqrt = testing.unary_function_test(F.sqrt, make_data=make_data)
 
 
 #
@@ -26,10 +22,7 @@ class TestSqrt(unittest.TestCase):
 def rsqrt(x, dtype=numpy.float32):
     return numpy.reciprocal(numpy.sqrt(x, dtype=dtype))
 
-
-@testing.unary_function_test(F.rsqrt, rsqrt, make_data)
-class TestRsqrt(unittest.TestCase):
-    pass
+TestRsqrt = testing.unary_function_test(F.rsqrt, rsqrt, make_data)
 
 
 testing.run_module(__name__, __file__)
