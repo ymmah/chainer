@@ -20,7 +20,7 @@ def make_data_default(dtype, shape):
 
 
 def math_function_test(func, func_expected=None, label_expected=None,
-                       make_data=None):
+                       make_data=None, args=[], kwargs={}):
     """Decorator to test Chainer functions lifting mathematical numpy functions.
 
     This decorator is for testing Chainer functions lifted from corresponding
@@ -158,9 +158,9 @@ def math_function_test(func, func_expected=None, label_expected=None,
 
         def check_forward(self, x_data):
             x = chainer.Variable(x_data)
-            y = func(x)
+            y = func(x, *args, **kwargs)
             self.assertEqual(y.data.dtype, x_data.dtype)
-            y_expected = func_expected(cuda.to_cpu(x_data), dtype=x_data.dtype)
+            y_expected = func_expected(cuda.to_cpu(x_data), *args, dtype=x_data.dtype)
             testing.assert_allclose(y_expected, y.data, atol=1e-4, rtol=1e-4)
         setattr(klass, "check_forward", check_forward)
 
@@ -176,8 +176,9 @@ def math_function_test(func, func_expected=None, label_expected=None,
         setattr(klass, "test_forward_gpu", test_forward_gpu)
 
         def check_backward(self, x_data, y_grad):
+            xs_data = tuple([x_data] + args)
             gradient_check.check_backward(
-                func, x_data, y_grad, **self.backward_options)
+                func, xs_data, y_grad, **self.backward_options)
         setattr(klass, "check_backward", check_backward)
 
         @condition.retry(3)

@@ -33,3 +33,16 @@ class TestRsqrt(unittest.TestCase):
 
 
 testing.run_module(__name__, __file__)
+
+
+#
+# hyper parameters
+
+def clip(x, x_min, x_max, dtype=numpy.float32):
+    # To ignore dtype parameter, which numpy.clip does not have.
+    return numpy.clip(x, x_min, x_max)
+
+
+@testing.math_function_test(F.clip, func_expected=clip, args=[-1.0, 1.0])
+class TestClip(unittest.TestCase):
+    pass
