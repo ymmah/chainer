@@ -1,4 +1,5 @@
 import numpy
+import six
 import unittest
 
 import chainer
@@ -13,13 +14,23 @@ def func_class(func):
     return getattr(F, name, None)
 
 
-def make_data_default(dtype, shape):
-    x = numpy.random.uniform(-1, 1, shape).astype(dtype)
-    gy = numpy.random.uniform(-1, 1, shape).astype(dtype)
-    return x, gy
+def make_default_data_maker(arity):
+    def make_data(dtype, shape):
+        xs = tuple(numpy.random.uniform(-1, 1, shape).astype(dtype)
+                   for _ in six.moves.range(arity))
+        gy = numpy.random.uniform(-1, 1, shape).astype(dtype)
+        return xs, gy
+    return make_data
 
 
-def math_function_test(func, func_expected=None, label_expected=None,
+def _ensure_tuple(x):
+    if type(x) is tuple:
+        return x
+    else:
+        return (x,)
+
+
+def math_function_test(func, func_expected=None, label_expected=None, arity=1,
                        make_data=None):
     """Decorator to test Chainer functions lifting mathematical numpy functions.
 
@@ -136,18 +147,20 @@ def math_function_test(func, func_expected=None, label_expected=None,
 
     if label_expected is None:
         label_expected = func.__name__
-    elif func_class(func) is None:
-        raise ValueError('Expected label is given even though Chainer '
-                         'function does not have its label.')
+    else:
+        if func_class(func) is None:
+            raise ValueError('Expected label is supplied even though Chainer '
+                             'function does not have its label.')
 
     if make_data is None:
-        make_data = make_data_default
+        make_data = make_default_data_maker(arity)
 
     def f(klass):
         assert issubclass(klass, unittest.TestCase)
 
         def setUp(self):
-            self.x, self.gy = make_data(self.dtype, self.shape)
+            self.xs, self.gy = make_data(self.dtype, self.shape)
+            self.xs = _ensure_tuple(self.xs)
             if self.dtype == numpy.float16:
                 self.backward_options = {
                     'eps': 2 ** -4, 'atol': 2 ** -4, 'rtol': 2 ** -4,
@@ -156,39 +169,47 @@ def math_function_test(func, func_expected=None, label_expected=None,
                 self.backward_options = {'atol': 1e-4, 'rtol': 1e-4}
         setattr(klass, "setUp", setUp)
 
-        def check_forward(self, x_data):
-            x = chainer.Variable(x_data)
-            y = func(x)
-            self.assertEqual(y.data.dtype, x_data.dtype)
-            y_expected = func_expected(cuda.to_cpu(x_data), dtype=x_data.dtype)
+        def check_forward(self, xs_data):
+            xs = [chainer.Variable(x_data) for x_data in xs_data]
+            y = func(*xs)
+
+            # Test output dtype.
+            self.assertEqual(y.data.dtype, xs_data[0].dtype)
+
+            # Test output value.
+            xs_data = [cuda.to_cpu(x_data) for x_data in xs_data]
+            y_expected = func_expected(*xs_data, dtype=xs_data[0].dtype)
             testing.assert_allclose(y_expected, y.data, atol=1e-4, rtol=1e-4)
         setattr(klass, "check_forward", check_forward)
 
         @condition.retry(3)
         def test_forward_cpu(self):
-            self.check_forward(self.x)
+            self.check_forward(self.xs)
         setattr(klass, "test_forward_cpu", test_forward_cpu)
 
         @attr.gpu
         @condition.retry(3)
         def test_forward_gpu(self):
-            self.check_forward(cuda.to_gpu(self.x))
+            xs = [cuda.to_gpu(x) for x in self.xs]
+            self.check_forward(xs)
         setattr(klass, "test_forward_gpu", test_forward_gpu)
 
-        def check_backward(self, x_data, y_grad):
+        def check_backward(self, xs_data, y_grad):
             gradient_check.check_backward(
-                func, x_data, y_grad, **self.backward_options)
+                func, xs_data, y_grad, **self.backward_options)
         setattr(klass, "check_backward", check_backward)
 
         @condition.retry(3)
         def test_backward_cpu(self):
-            self.check_backward(self.x, self.gy)
+            self.check_backward(self.xs, self.gy)
         setattr(klass, "test_backward_cpu", test_backward_cpu)
 
         @attr.gpu
         @condition.retry(3)
         def test_backward_gpu(self):
-            self.check_backward(cuda.to_gpu(self.x), cuda.to_gpu(self.gy))
+            xs = [cuda.to_gpu(x) for x in self.xs]
+            gy = cuda.to_gpu(self.gy)
+            self.check_backward(xs, gy)
         setattr(klass, "test_backward_gpu", test_backward_gpu)
 
         def test_label(self):

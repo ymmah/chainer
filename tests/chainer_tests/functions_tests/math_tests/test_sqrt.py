@@ -33,3 +33,18 @@ class TestRsqrt(unittest.TestCase):
 
 
 testing.run_module(__name__, __file__)
+
+
+#
+# binary
+
+def make_data2(dtype, shape):
+    x1 = numpy.random.uniform(0.1, 5, shape).astype(dtype)
+    x2 = numpy.random.uniform(0.1, 5, shape).astype(dtype)
+    gy = numpy.random.uniform(-1, 1, shape).astype(dtype)
+    return (x1, x2), gy
+
+
+@testing.math_function_test(F.basic_math.add, arity=2, make_data=make_data2)
+class TestAdd(unittest.TestCase):
+    pass
