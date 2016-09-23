@@ -158,7 +158,7 @@ class Im2colNDKernel(object):
         in_params = self._in_params(ds, outs, ks, ss, ps)
         out_params = self._out_params()
         operation = self._operation(ndim, ds, outs, ks, ss, ps)
-        name = name = 'im2col_{}d'.format(ndim)
+        name = 'im2col_{}d'.format(ndim)
         return in_params, out_params, operation, name
 
     @staticmethod
