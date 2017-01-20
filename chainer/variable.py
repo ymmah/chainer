@@ -1,3 +1,4 @@
+import copy
 import collections
 import heapq
 import traceback
@@ -80,23 +81,37 @@ Actual: {0}'''.format(type(data))
             _check_grad_type(None, self, g)
         self._grad = g
 
-    def to_cpu(self):
-        if self.data is None:
-            self._initial_device = -1
+    def to_cpu(self, copied=True):
+        if copied:
+            vdata = copy.copy(self)
         else:
-            self.data = cuda.to_cpu(self.data)
-            if self._grad is not None:
-                self._grad = cuda.to_cpu(self._grad)
+            vdata = self
 
-    def to_gpu(self, device=None):
+        if self.data is None:
+            vdata._initial_device = -1
+        else:
+            vdata.data = cuda.to_gpu(self.data)
+            if self._grad is not None:
+                vdata._grad = cuda.to_gpu(self._grad)
+
+        return vdata
+
+    def to_gpu(self, device=None, copied=True):
+        if copied:
+            vdata = copy.copy(self)
+        else:
+            vdata = self
+
         if self.data is None:
             current = cuda.Device().id
-            self._initial_device = current if device is None else device
+            vdata._initial_device = current if device is None else device
         else:
             with cuda.get_device(device):
-                self.data = cuda.to_gpu(self.data)
+                vdata.data = cuda.to_gpu(self.data)
                 if self._grad is not None:
-                    self._grad = cuda.to_gpu(self._grad)
+                    vdata._grad = cuda.to_gpu(self._grad)
+
+        return vdata
 
     def cleargrad(self):
         self._grad = None
@@ -329,11 +344,16 @@ class Variable(object):
     def dtype(self):
         return self.data.dtype
 
-    def to_cpu(self):
+    def to_cpu(self, copied=True):
         """Copies the data and gradient arrays to CPU."""
-        self._vdata.to_cpu()
+        if copied:
+            var = copy.copy(self)
+        else:
+            var = self
+        var._vdata = self._vdata.to_cpu(copied=copied)
+        return var
 
-    def to_gpu(self, device=None):
+    def to_gpu(self, device=None, copied=True):
         """Copies the data and gradient arrays to specified GPU.
 
         Args:
@@ -341,7 +361,12 @@ class Variable(object):
                 used.
 
         """
-        self._vdata.to_gpu(device=device)
+        if copied:
+            var = copy.copy(self)
+        else:
+            var = self
+        var._vdata = self._vdata.to_gpu(device=device, copied=copied)
+        return var
 
     def cleargrad(self):
         """Clears the gradient array."""

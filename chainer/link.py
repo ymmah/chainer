@@ -245,7 +245,7 @@ class Link(object):
             d[name].grad = None
         return ret
 
-    def to_cpu(self):
+    def to_cpu(self, copied=False):
         """Copies parameter variables and persistent values to CPU.
 
         This method does not handle non-registered attributes. If some of such
@@ -257,18 +257,23 @@ class Link(object):
         """
         if self._cpu:
             return self
-        d = self.__dict__
+
+        if copied:
+            link = copy.copy(self)
+        else:
+            link = self
+        d = link.__dict__
         for name in self._params:
-            d[name].to_cpu()
+            d[name] = d[name].to_cpu(copied=copied)
         for name in self._persistent:
             value = d[name]
             if isinstance(value, cuda.ndarray):
                 d[name] = value.get()
-        self._cpu = True
-        self._device_id = None
-        return self
+        link._cpu = False
+        link._device_id = None
+        return link
 
-    def to_gpu(self, device=None):
+    def to_gpu(self, device=None, copied=False):
         """Copies parameter variables and persistent values to GPU.
 
         This method does not handle non-registered attributes. If some of such
@@ -285,17 +290,22 @@ class Link(object):
         cuda.check_cuda_available()
         if not self._cpu:
             return self
-        d = self.__dict__
+
+        if copied:
+            link = copy.copy(self)
+        else:
+            link = self
+        d = link.__dict__
         with cuda.get_device(device):
             for name in self._params:
-                d[name].to_gpu()
+                d[name] = d[name].to_gpu(copied=copied)
             for name in self._persistent:
                 value = d[name]
                 if isinstance(value, numpy.ndarray):
                     d[name] = cuda.to_gpu(value)
-            self._device_id = cuda.cupy.cuda.get_device_id()
-        self._cpu = False
-        return self
+            link._device_id = cuda.cupy.cuda.get_device_id()
+        link._cpu = False
+        return link
 
     def params(self):
         """Returns a generator of all parameters under the link hierarchy.
@@ -555,19 +565,19 @@ class Chain(Link):
             d[name] = copied
         return ret
 
-    def to_cpu(self):
-        super(Chain, self).to_cpu()
+    def to_cpu(self, copied=False):
+        super(Chain, self).to_cpu(copied=copied)
         d = self.__dict__
         for name in self._children:
-            d[name].to_cpu()
+            d[name].to_cpu(copied=copied)
         return self
 
-    def to_gpu(self, device=None):
+    def to_gpu(self, device=None, copied=False):
         with cuda.get_device(device):
-            super(Chain, self).to_gpu()
+            super(Chain, self).to_gpu(copied=copied)
             d = self.__dict__
             for name in self._children:
-                d[name].to_gpu()
+                d[name].to_gpu(copied=copied)
         return self
 
     def params(self):
@@ -710,17 +720,17 @@ class ChainList(Link):
             children[i] = child
         return ret
 
-    def to_cpu(self):
-        super(ChainList, self).to_cpu()
+    def to_cpu(self, copied=False):
+        super(ChainList, self).to_cpu(copied=copied)
         for link in self._children:
-            link.to_cpu()
+            link.to_cpu(copied=copied)
         return self
 
-    def to_gpu(self, device=None):
+    def to_gpu(self, device=None, copied=False):
         with cuda.get_device(device):
-            super(ChainList, self).to_gpu()
+            super(ChainList, self).to_gpu(copied=copied)
             for link in self._children:
-                link.to_gpu()
+                link.to_gpu(copied=copied)
         return self
 
     def params(self):
