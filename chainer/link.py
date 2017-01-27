@@ -245,7 +245,7 @@ class Link(object):
             d[name].grad = None
         return ret
 
-    def to_cpu(self, copied=False):
+    def to_cpu(self, copy=False):
         """Copies parameter variables and persistent values to CPU.
 
         This method does not handle non-registered attributes. If some of such
@@ -258,13 +258,13 @@ class Link(object):
         if self._cpu:
             return self
 
-        if copied:
+        if copy:
             link = copy.copy(self)
         else:
             link = self
         d = link.__dict__
         for name in self._params:
-            d[name] = d[name].to_cpu(copied=copied)
+            d[name] = d[name].to_cpu(copy=copy)
         for name in self._persistent:
             value = d[name]
             if isinstance(value, cuda.ndarray):
@@ -273,7 +273,7 @@ class Link(object):
         link._device_id = None
         return link
 
-    def to_gpu(self, device=None, copied=False):
+    def to_gpu(self, device=None, copy=False):
         """Copies parameter variables and persistent values to GPU.
 
         This method does not handle non-registered attributes. If some of such
@@ -291,14 +291,14 @@ class Link(object):
         if not self._cpu:
             return self
 
-        if copied:
+        if copy:
             link = copy.copy(self)
         else:
             link = self
         d = link.__dict__
         with cuda.get_device(device):
             for name in self._params:
-                d[name] = d[name].to_gpu(copied=copied)
+                d[name] = d[name].to_gpu(copy=copy)
             for name in self._persistent:
                 value = d[name]
                 if isinstance(value, numpy.ndarray):
@@ -565,19 +565,19 @@ class Chain(Link):
             d[name] = copied
         return ret
 
-    def to_cpu(self, copied=False):
-        super(Chain, self).to_cpu(copied=copied)
+    def to_cpu(self, copy=False):
+        super(Chain, self).to_cpu(copy=copy)
         d = self.__dict__
         for name in self._children:
-            d[name].to_cpu(copied=copied)
+            d[name].to_cpu(copy=copy)
         return self
 
-    def to_gpu(self, device=None, copied=False):
+    def to_gpu(self, device=None, copy=False):
         with cuda.get_device(device):
-            super(Chain, self).to_gpu(copied=copied)
+            super(Chain, self).to_gpu(copy=copy)
             d = self.__dict__
             for name in self._children:
-                d[name].to_gpu(copied=copied)
+                d[name].to_gpu(copy=copy)
         return self
 
     def params(self):
@@ -720,17 +720,17 @@ class ChainList(Link):
             children[i] = child
         return ret
 
-    def to_cpu(self, copied=False):
-        super(ChainList, self).to_cpu(copied=copied)
+    def to_cpu(self, copy=False):
+        super(ChainList, self).to_cpu(copy=copy)
         for link in self._children:
-            link.to_cpu(copied=copied)
+            link.to_cpu(copy=copy)
         return self
 
-    def to_gpu(self, device=None, copied=False):
+    def to_gpu(self, device=None, copy=False):
         with cuda.get_device(device):
-            super(ChainList, self).to_gpu(copied=copied)
+            super(ChainList, self).to_gpu(copy=copy)
             for link in self._children:
-                link.to_gpu(copied=copied)
+                link.to_gpu(copy=copy)
         return self
 
     def params(self):

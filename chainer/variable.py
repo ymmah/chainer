@@ -81,8 +81,8 @@ Actual: {0}'''.format(type(data))
             _check_grad_type(None, self, g)
         self._grad = g
 
-    def to_cpu(self, copied=True):
-        if copied:
+    def to_cpu(self, copy=True):
+        if copy:
             vdata = copy.copy(self)
         else:
             vdata = self
@@ -96,8 +96,8 @@ Actual: {0}'''.format(type(data))
 
         return vdata
 
-    def to_gpu(self, device=None, copied=True):
-        if copied:
+    def to_gpu(self, device=None, copy=True):
+        if copy:
             vdata = copy.copy(self)
         else:
             vdata = self
@@ -344,16 +344,16 @@ class Variable(object):
     def dtype(self):
         return self.data.dtype
 
-    def to_cpu(self, copied=True):
+    def to_cpu(self, copy=True):
         """Copies the data and gradient arrays to CPU."""
-        if copied:
+        if copy:
             var = copy.copy(self)
         else:
             var = self
-        var._vdata = self._vdata.to_cpu(copied=copied)
+        var._vdata = self._vdata.to_cpu(copy=copy)
         return var
 
-    def to_gpu(self, device=None, copied=True):
+    def to_gpu(self, device=None, copy=True):
         """Copies the data and gradient arrays to specified GPU.
 
         Args:
@@ -361,11 +361,11 @@ class Variable(object):
                 used.
 
         """
-        if copied:
+        if copy:
             var = copy.copy(self)
         else:
             var = self
-        var._vdata = self._vdata.to_gpu(device=device, copied=copied)
+        var._vdata = self._vdata.to_gpu(device=device, copy=copy)
         return var
 
     def cleargrad(self):
