@@ -269,7 +269,7 @@ class Link(object):
             value = d[name]
             if isinstance(value, cuda.ndarray):
                 d[name] = value.get()
-        link._cpu = False
+        link._cpu = True
         link._device_id = None
         return link
 
