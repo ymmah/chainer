@@ -67,7 +67,7 @@ class _VariableData(object):
 Actual: {0}'''.format(type(data))
                 raise TypeError(msg)
 
-        self.data = data
+        self._data = data
         self._grad = grad
 
     @property
@@ -86,10 +86,10 @@ Actual: {0}'''.format(type(data))
         else:
             vdata = self
 
-        if self.data is None:
+        if self._data is None:
             vdata._initial_device = -1
         else:
-            vdata.data = cuda.to_gpu(self.data)
+            vdata.data = cuda.to_gpu(self._data)
             if self._grad is not None:
                 vdata._grad = cuda.to_gpu(self._grad)
 
@@ -101,12 +101,12 @@ Actual: {0}'''.format(type(data))
         else:
             vdata = self
 
-        if self.data is None:
+        if self._data is None:
             current = cuda.Device().id
             vdata._initial_device = current if device is None else device
         else:
             with cuda.get_device(device):
-                vdata.data = cuda.to_gpu(self.data)
+                vdata.data = cuda.to_gpu(self._data)
                 if self._grad is not None:
                     vdata._grad = cuda.to_gpu(self._grad)
 
@@ -114,19 +114,19 @@ Actual: {0}'''.format(type(data))
 
     def cleargrad(self):
         self._grad = None
-        if self.data is None:
+        if self._data is None:
             self._grad_initializer = None
 
     def zerograd(self):
-        if self.data is None:
+        if self._data is None:
             dtype = getattr(self.initializer, 'dtype', None)
             self._grad_initializer = initializers.Zero(dtype)
             return
 
-        with cuda.get_device(self.data) as dev:
+        with cuda.get_device(self._data) as dev:
             if self._grad is None:
                 xp = numpy if int(dev) == -1 else cuda.cupy
-                self._grad = xp.zeros_like(self.data)
+                self._grad = xp.zeros_like(self._data)
             else:
                 self._grad.fill(0)
 
@@ -135,12 +135,12 @@ Actual: {0}'''.format(type(data))
         if src is None:
             return
 
-        if self.data is None:
+        if self._data is None:
             self.initialize(vdata.data.shape)
         dst = self._grad
 
         src_dev = cuda.get_device(src)
-        dst_dev = cuda.get_device(self.data)
+        dst_dev = cuda.get_device(self._data)
 
         if src_dev.id == dst_dev.id:
             with dst_dev:
@@ -174,7 +174,7 @@ Actual: {0}'''.format(type(data))
             if grad is not None:
                 grad = cuda.to_gpu(grad, device=self._initial_device)
 
-        self.data = data
+        self._data = data
         self._grad = grad
 
 
