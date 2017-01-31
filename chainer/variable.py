@@ -1,3 +1,4 @@
+import copy as _copy
 import collections
 import heapq
 import traceback
@@ -52,14 +53,16 @@ https://github.com/pfnet/chainer/issues/new.
 
 class _VariableData(object):
 
-    initializer = None
+    _initializer = None
     _grad_initializer = None
     _initial_device = -1
 
     def __init__(self, data=None, grad=None, initializer=None):
         if data is None:
-            self._initializer = (
-                initializers.NaN() if initializer is None else initializer)
+            if initializer is not None:
+                self._initializer = initializer
+            else:
+                self._initializer = initializers.NaN()
             dtype = getattr(self.initializer, 'dtype', numpy.float32)
             self._grad_initializer = initializers.NaN(dtype)
         elif not isinstance(data, (numpy.ndarray, cuda.ndarray)):
@@ -80,33 +83,35 @@ Actual: {0}'''.format(type(data))
             _check_grad_type(None, self, g)
         self._grad = g
 
-    def to_cpu(self, copy=True):
+    def to_cpu(self, copy=False):
         if copy:
-            vdata = copy.copy(self)
+            vdata = _copy.copy(self)
         else:
             vdata = self
 
         if self._data is None:
             vdata._initial_device = -1
         else:
-            vdata.data = cuda.to_gpu(self._data)
+            vdata._data = cuda.to_cpu(self._data)
             if self._grad is not None:
-                vdata._grad = cuda.to_gpu(self._grad)
+                vdata._grad = cuda.to_cpu(self._grad)
 
         return vdata
 
-    def to_gpu(self, device=None, copy=True):
+    def to_gpu(self, device=None, copy=False):
         if copy:
-            vdata = copy.copy(self)
+            vdata = _copy.copy(self)
         else:
             vdata = self
 
         if self._data is None:
-            current = cuda.Device().id
-            vdata._initial_device = current if device is None else device
+            if device is not None:
+                vdata._initial_device = device
+            else:
+                vdata._initial_device = cuda.Device().id
         else:
             with cuda.get_device(device):
-                vdata.data = cuda.to_gpu(self._data)
+                vdata._data = cuda.to_gpu(self._data)
                 if self._grad is not None:
                     vdata._grad = cuda.to_gpu(self._grad)
 
@@ -136,7 +141,7 @@ Actual: {0}'''.format(type(data))
             return
 
         if self._data is None:
-            self.initialize(vdata.data.shape)
+            self.initialize(vdata._data.shape)
         dst = self._grad
 
         src_dev = cuda.get_device(src)
@@ -166,8 +171,10 @@ Actual: {0}'''.format(type(data))
         data = initializers.generate_array(self.initializer, shape, numpy)
 
         ginit = self._grad_initializer
-        grad = None if ginit is None else initializers.generate_array(
-            ginit, shape, numpy)
+        if ginit is None:
+            grad = None
+        else:
+            grad = initializers.generator_array(ginit, shape, numpy)
 
         if self._initial_device >= 0:
             data = cuda.to_gpu(data, device=self._initial_device)
@@ -313,11 +320,11 @@ class Variable(object):
 
     @property
     def data(self):
-        return self._vdata.data
+        return self._vdata._data
 
     @data.setter
     def data(self, d):
-        self._vdata.data = d
+        self._vdata._data = d
 
     @property
     def grad(self):
