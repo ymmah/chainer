@@ -252,7 +252,7 @@ class Link(object):
         attributes must be copied to CPU, the link implementation must
         override this method to do so.
 
-        Returns: self
+        Returns: self if `copy`` is False, otherwise a copied link
 
         """
         if self._cpu:
@@ -284,7 +284,7 @@ class Link(object):
             device: Target device specifier. If omitted, the current device is
                 used.
 
-        Returns: self
+        Returns: self if ``copy`` is False, otherwise a copied link
 
         """
         cuda.check_cuda_available()
