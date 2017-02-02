@@ -37,17 +37,17 @@ https://github.com/pfnet/chainer/issues/new.
         detail += message
         return detail
 
-    if not isinstance(gx, type(x.data)):
+    if not isinstance(gx, type(x._data)):
         msg = ('Type of data and grad mismatch\n%s != %s' %
-               (type(x.data), type(gx)))
+               (type(x._data), type(gx)))
         raise TypeError(make_message(msg))
-    if gx.dtype != x.data.dtype:
+    if gx.dtype != x._data.dtype:
         msg = ('Dtype of data and grad mismatch\n%s != %s' %
-               (x.data.dtype, gx.dtype))
+               (x._data.dtype, gx.dtype))
         raise TypeError(make_message(msg))
-    if gx.shape != x.data.shape:
+    if gx.shape != x._data.shape:
         msg = ('Shape of data and grad mismatch\n%s != %s' %
-               (x.data.shape, gx.shape))
+               (x._data.shape, gx.shape))
         raise ValueError(make_message(msg))
 
 
