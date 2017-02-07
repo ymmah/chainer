@@ -1,4 +1,4 @@
-import copy as _copy
+import copy
 import collections
 import heapq
 import traceback
@@ -51,6 +51,34 @@ https://github.com/pfnet/chainer/issues/new.
         raise ValueError(make_message(msg))
 
 
+def _vdata_to_cpu(vdata):
+    # Friend function with _VariableData class.
+    vdata1 = copy.copy(vdata)
+    if vdata._data is None:
+        vdata1._initial_device = 1
+    else:
+        vdata1._data = cuda.to_cpu(vdata._data)
+        if vdata._grad is not None:
+            vdata1._grad = cuda.to_cpu(vdata._grad)
+    return vdata1
+
+
+def _vdata_to_gpu(vdata, device=None):
+    # Friend function with _VariableData class.
+    vdata1 = copy.copy(vdata)
+    if vdata._data is None:
+        if device is None:
+            vdata1._initial_device = cuda.Device().id
+        else:
+            vdata1._initial_device = device
+    else:
+        with cuda.get_device(device):
+            vdata1._data = cuda.to_gpu(vdata._data)
+            if vdata._grad is not None:
+                vdata1._grad = cuda.to_gpu(vdata._grad)
+    return vdata1
+
+
 class _VariableData(object):
 
     _initializer = None
@@ -82,40 +110,6 @@ Actual: {0}'''.format(type(data))
         if g is not None:
             _check_grad_type(None, self, g)
         self._grad = g
-
-    def to_cpu(self, copy=False):
-        if copy:
-            vdata = _copy.copy(self)
-        else:
-            vdata = self
-
-        if self._data is None:
-            vdata._initial_device = -1
-        else:
-            vdata._data = cuda.to_cpu(self._data)
-            if self._grad is not None:
-                vdata._grad = cuda.to_cpu(self._grad)
-
-        return vdata
-
-    def to_gpu(self, device=None, copy=False):
-        if copy:
-            vdata = _copy.copy(self)
-        else:
-            vdata = self
-
-        if self._data is None:
-            if device is not None:
-                vdata._initial_device = device
-            else:
-                vdata._initial_device = cuda.Device().id
-        else:
-            with cuda.get_device(device):
-                vdata._data = cuda.to_gpu(self._data)
-                if self._grad is not None:
-                    vdata._grad = cuda.to_gpu(self._grad)
-
-        return vdata
 
     def cleargrad(self):
         self._grad = None
@@ -328,11 +322,11 @@ class Variable(object):
 
     @property
     def grad(self):
-        return self._vdata.grad
+        return self._vdata._grad
 
     @grad.setter
     def grad(self, g):
-        self._vdata.grad = g
+        self._vdata._grad = g
 
     @property
     def shape(self):
@@ -350,16 +344,11 @@ class Variable(object):
     def dtype(self):
         return self.data.dtype
 
-    def to_cpu(self, copy=True):
+    def to_cpu(self):
         """Copies the data and gradient arrays to CPU."""
-        if copy:
-            var = copy.copy(self)
-        else:
-            var = self
-        var._vdata = self._vdata.to_cpu(copy=copy)
-        return var
+        self._vdata = _vdata_to_cpu(self._vdata)
 
-    def to_gpu(self, device=None, copy=True):
+    def to_gpu(self, device=None):
         """Copies the data and gradient arrays to specified GPU.
 
         Args:
@@ -367,12 +356,7 @@ class Variable(object):
                 used.
 
         """
-        if copy:
-            var = copy.copy(self)
-        else:
-            var = self
-        var._vdata = self._vdata.to_gpu(device=device, copy=copy)
-        return var
+        self._vdata = _vdata_to_gpu(self._vdata, device=device)
 
     def cleargrad(self):
         """Clears the gradient array."""
