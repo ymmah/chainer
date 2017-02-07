@@ -245,35 +245,30 @@ class Link(object):
             d[name].grad = None
         return ret
 
-    def to_cpu(self, copy=False):
+    def to_cpu(self):
         """Copies parameter variables and persistent values to CPU.
 
         This method does not handle non-registered attributes. If some of such
         attributes must be copied to CPU, the link implementation must
         override this method to do so.
 
-        Returns: self if `copy`` is False, otherwise a copied link
+        Returns: self
 
         """
         if self._cpu:
             return self
-
-        if copy:
-            link = copy.copy(self)
-        else:
-            link = self
-        d = link.__dict__
+        d = self.__dict__
         for name in self._params:
-            d[name] = d[name].to_cpu(copy=copy)
+            d[name].to_cpu()
         for name in self._persistent:
             value = d[name]
             if isinstance(value, cuda.ndarray):
                 d[name] = value.get()
-        link._cpu = True
-        link._device_id = None
-        return link
+        self._cpu = True
+        self._device_id = None
+        return self
 
-    def to_gpu(self, device=None, copy=False):
+    def to_gpu(self, device=None):
         """Copies parameter variables and persistent values to GPU.
 
         This method does not handle non-registered attributes. If some of such
@@ -284,28 +279,23 @@ class Link(object):
             device: Target device specifier. If omitted, the current device is
                 used.
 
-        Returns: self if ``copy`` is False, otherwise a copied link
+        Returns: self
 
         """
         cuda.check_cuda_available()
         if not self._cpu:
             return self
-
-        if copy:
-            link = copy.copy(self)
-        else:
-            link = self
-        d = link.__dict__
+        d = self.__dict__
         with cuda.get_device(device):
             for name in self._params:
-                d[name] = d[name].to_gpu(copy=copy)
+                d[name].to_gpu()
             for name in self._persistent:
                 value = d[name]
                 if isinstance(value, numpy.ndarray):
                     d[name] = cuda.to_gpu(value)
-            link._device_id = cuda.cupy.cuda.get_device_id()
-        link._cpu = False
-        return link
+            self._device_id = cuda.cupy.cuda.get_device_id()
+        self._cpu = False
+        return self
 
     def params(self):
         """Returns a generator of all parameters under the link hierarchy.
@@ -565,19 +555,19 @@ class Chain(Link):
             d[name] = copied
         return ret
 
-    def to_cpu(self, copy=False):
-        super(Chain, self).to_cpu(copy=copy)
+    def to_cpu(self):
+        super(Chain, self).to_cpu()
         d = self.__dict__
         for name in self._children:
-            d[name].to_cpu(copy=copy)
+            d[name].to_cpu()
         return self
 
-    def to_gpu(self, device=None, copy=False):
+    def to_gpu(self, device=None):
         with cuda.get_device(device):
-            super(Chain, self).to_gpu(copy=copy)
+            super(Chain, self).to_gpu()
             d = self.__dict__
             for name in self._children:
-                d[name].to_gpu(copy=copy)
+                d[name].to_gpu()
         return self
 
     def params(self):
@@ -720,17 +710,17 @@ class ChainList(Link):
             children[i] = child
         return ret
 
-    def to_cpu(self, copy=False):
-        super(ChainList, self).to_cpu(copy=copy)
+    def to_cpu(self):
+        super(ChainList, self).to_cpu()
         for link in self._children:
-            link.to_cpu(copy=copy)
+            link.to_cpu()
         return self
 
-    def to_gpu(self, device=None, copy=False):
+    def to_gpu(self, device=None):
         with cuda.get_device(device):
-            super(ChainList, self).to_gpu(copy=copy)
+            super(ChainList, self).to_gpu()
             for link in self._children:
-                link.to_gpu(copy=copy)
+                link.to_gpu()
         return self
 
     def params(self):

@@ -1,4 +1,3 @@
-import copy
 import collections
 import heapq
 import traceback
@@ -37,146 +36,18 @@ https://github.com/pfnet/chainer/issues/new.
         detail += message
         return detail
 
-    if not isinstance(gx, type(x._data)):
+    if not isinstance(gx, type(x.data)):
         msg = ('Type of data and grad mismatch\n%s != %s' %
-               (type(x._data), type(gx)))
+               (type(x.data), type(gx)))
         raise TypeError(make_message(msg))
-    if gx.dtype != x._data.dtype:
+    if gx.dtype != x.data.dtype:
         msg = ('Dtype of data and grad mismatch\n%s != %s' %
-               (x._data.dtype, gx.dtype))
+               (x.data.dtype, gx.dtype))
         raise TypeError(make_message(msg))
-    if gx.shape != x._data.shape:
+    if gx.shape != x.data.shape:
         msg = ('Shape of data and grad mismatch\n%s != %s' %
-               (x._data.shape, gx.shape))
+               (x.data.shape, gx.shape))
         raise ValueError(make_message(msg))
-
-
-def _vdata_to_cpu(vdata):
-    # Friend function with _VariableData class.
-    vdata1 = copy.copy(vdata)
-    if vdata._data is None:
-        vdata1._initial_device = 1
-    else:
-        vdata1._data = cuda.to_cpu(vdata._data)
-        if vdata._grad is not None:
-            vdata1._grad = cuda.to_cpu(vdata._grad)
-    return vdata1
-
-
-def _vdata_to_gpu(vdata, device=None):
-    # Friend function with _VariableData class.
-    vdata1 = copy.copy(vdata)
-    if vdata._data is None:
-        if device is None:
-            vdata1._initial_device = cuda.Device().id
-        else:
-            vdata1._initial_device = device
-    else:
-        with cuda.get_device(device):
-            vdata1._data = cuda.to_gpu(vdata._data)
-            if vdata._grad is not None:
-                vdata1._grad = cuda.to_gpu(vdata._grad)
-    return vdata1
-
-
-class _VariableData(object):
-
-    _initializer = None
-    _grad_initializer = None
-    _initial_device = -1
-
-    def __init__(self, data=None, grad=None, initializer=None):
-        if data is None:
-            if initializer is not None:
-                self._initializer = initializer
-            else:
-                self._initializer = initializers.NaN()
-            dtype = getattr(self.initializer, 'dtype', numpy.float32)
-            self._grad_initializer = initializers.NaN(dtype)
-        elif not isinstance(data, (numpy.ndarray, cuda.ndarray)):
-                msg = '''numpy.ndarray or cuda.ndarray are expected.
-Actual: {0}'''.format(type(data))
-                raise TypeError(msg)
-
-        self._data = data
-        self._grad = grad
-
-    @property
-    def grad(self):
-        return self._grad
-
-    @grad.setter
-    def grad(self, g):
-        if g is not None:
-            _check_grad_type(None, self, g)
-        self._grad = g
-
-    def cleargrad(self):
-        self._grad = None
-        if self._data is None:
-            self._grad_initializer = None
-
-    def zerograd(self):
-        if self._data is None:
-            dtype = getattr(self.initializer, 'dtype', None)
-            self._grad_initializer = initializers.Zero(dtype)
-            return
-
-        with cuda.get_device(self._data) as dev:
-            if self._grad is None:
-                xp = numpy if int(dev) == -1 else cuda.cupy
-                self._grad = xp.zeros_like(self._data)
-            else:
-                self._grad.fill(0)
-
-    def addgrad(self, vdata):
-        src = vdata._grad
-        if src is None:
-            return
-
-        if self._data is None:
-            self.initialize(vdata._data.shape)
-        dst = self._grad
-
-        src_dev = cuda.get_device(src)
-        dst_dev = cuda.get_device(self._data)
-
-        if src_dev.id == dst_dev.id:
-            with dst_dev:
-                if dst is None:
-                    xp = cuda.get_array_module(src)
-                    self._grad = xp.copy(src)
-                else:
-                    self._grad += src
-            return
-
-        if dst_dev.id < 0:
-            src_grad = cuda.to_cpu(src)
-        else:
-            src_grad = cuda.to_gpu(src, device=dst_dev)
-
-        if dst is None:
-            self._grad = src_grad
-        else:
-            with dst_dev:
-                self._grad += src_grad
-
-    def initialize(self, shape):
-        data = initializers.generate_array(self.initializer, shape, numpy)
-
-        ginit = self._grad_initializer
-        if ginit is None:
-            grad = None
-        else:
-            grad = initializers.generator_array(ginit, shape, numpy)
-
-        if self._initial_device >= 0:
-            data = cuda.to_gpu(data, device=self._initial_device)
-            if grad is not None:
-                grad = cuda.to_gpu(grad, device=self._initial_device)
-
-        self._data = data
-        self._grad = grad
 
 
 class Variable(object):
@@ -224,17 +95,33 @@ class Variable(object):
 
     """
 
+    initializer = None
+    _grad_initializer = None
+    _initial_device = -1
+
     def __init__(self, data=None, volatile=flag.OFF, name=None, grad=None,
                  initializer=None):
-        self._vdata = _VariableData(data=data, grad=grad,
-                                    initializer=initializer)
+        if data is None:
+            self.initializer = (
+                initializers.NaN() if initializer is None else initializer)
+            dtype = getattr(self.initializer, 'dtype', numpy.float32)
+            self._grad_initializer = initializers.NaN(dtype)
+        elif not isinstance(data, (numpy.ndarray, cuda.ndarray)):
+                msg = '''numpy.ndarray or cuda.ndarray are expected.
+Actual: {0}'''.format(type(data))
+                raise TypeError(msg)
+
+        self.data = data
         self.rank = 0
         self._volatile = flag.Flag(volatile)
+
+        self._grad = grad
         self.creator = None
+
         self.name = name
 
     def __reduce__(self):
-        return Variable, (self.data, self.volatile, self.name, self.grad)
+        return Variable, (self.data, self.volatile, self.name, self._grad)
 
     def __repr__(self):
         if self.name:
@@ -313,20 +200,14 @@ class Variable(object):
                              str(self.data.dtype))
 
     @property
-    def data(self):
-        return self._vdata._data
-
-    @data.setter
-    def data(self, d):
-        self._vdata._data = d
-
-    @property
     def grad(self):
-        return self._vdata._grad
+        return self._grad
 
     @grad.setter
     def grad(self, g):
-        self._vdata._grad = g
+        if g is not None:
+            _check_grad_type(None, self, g)
+        self._grad = g
 
     @property
     def shape(self):
@@ -346,7 +227,12 @@ class Variable(object):
 
     def to_cpu(self):
         """Copies the data and gradient arrays to CPU."""
-        self._vdata = _vdata_to_cpu(self._vdata)
+        if self.data is None:
+            self._initial_device = -1
+        else:
+            self.data = cuda.to_cpu(self.data)
+            if self._grad is not None:
+                self._grad = cuda.to_cpu(self._grad)
 
     def to_gpu(self, device=None):
         """Copies the data and gradient arrays to specified GPU.
@@ -356,11 +242,20 @@ class Variable(object):
                 used.
 
         """
-        self._vdata = _vdata_to_gpu(self._vdata, device=device)
+        if self.data is None:
+            current = cuda.Device().id
+            self._initial_device = current if device is None else device
+        else:
+            with cuda.get_device(device):
+                self.data = cuda.to_gpu(self.data)
+                if self._grad is not None:
+                    self._grad = cuda.to_gpu(self._grad)
 
     def cleargrad(self):
         """Clears the gradient array."""
-        self._vdata.cleargrad()
+        self._grad = None
+        if self.data is None:
+            self._grad_initializer = None
 
     def zerograd(self):
         """Initializes the gradient array by zeros.
@@ -372,7 +267,18 @@ class Variable(object):
         warnings.warn(
             'Variable.zerograd is deprecated. Use Variable.cleargard instead.',
             DeprecationWarning)
-        self._vdata.zerograd()
+
+        if self.data is None:
+            dtype = getattr(self.initializer, 'dtype', None)
+            self._grad_initializer = initializers.Zero(dtype)
+            return
+
+        with cuda.get_device(self.data) as dev:
+            if self._grad is None:
+                xp = numpy if int(dev) == -1 else cuda.cupy
+                self._grad = xp.zeros_like(self.data)
+            else:
+                self._grad.fill(0)
 
     def copydata(self, var):
         """Copies the data array from given source variable.
@@ -422,7 +328,36 @@ class Variable(object):
             var (Variable): Source variable.
 
         """
-        self._vdata.addgrad(var._vdata)
+        src = var._grad
+        if src is None:
+            return
+
+        if self.data is None:
+            self.initialize(var.shape)
+        dst = self._grad
+
+        src_dev = cuda.get_device(src)
+        dst_dev = cuda.get_device(self.data)
+
+        if src_dev.id == dst_dev.id:
+            with dst_dev:
+                if dst is None:
+                    xp = cuda.get_array_module(src)
+                    self._grad = xp.copy(src)
+                else:
+                    self._grad += src
+            return
+
+        if dst_dev.id < 0:
+            src_grad = cuda.to_cpu(src)
+        else:
+            src_grad = cuda.to_gpu(src, device=dst_dev)
+
+        if dst is None:
+            self._grad = src_grad
+        else:
+            with dst_dev:
+                self._grad += src_grad
 
     def set_creator(self, gen_func):
         """Notifies the variable that the given function is its creator.
@@ -528,14 +463,14 @@ class Variable(object):
                 with cuda.get_device(gx):
                     id_x = id(x)
                     if x.creator is None:  # leaf
-                        if x.grad is None:
+                        if x._grad is None:
                             x.grad = gx
                             need_copy.add(id_x)
                         elif id_x in need_copy:
                             x.grad = x.grad + gx  # copy
                             need_copy.remove(id_x)
                         else:
-                            x.grad += gx
+                            x._grad += gx
                     else:  # not a leaf
                         add_cand(x.creator)
                         if id_x not in seen_vars:  # 1st visit
@@ -543,10 +478,10 @@ class Variable(object):
                             seen_vars.add(id_x)
                             need_copy.add(id_x)
                         elif id_x in need_copy:  # 2nd visit
-                            x.grad = gx + x.grad  # copied
+                            x._grad = gx + x._grad  # copied
                             need_copy.remove(id_x)
                         else:  # 3rd or later visit
-                            x.grad += gx
+                            x._grad += gx
             del gxs  # to reduce memory usage
 
     def unchain_backward(self):
@@ -587,7 +522,19 @@ class Variable(object):
             shape (tuple of int): Shape of the data array.
 
         """
-        self._vdata.initialize(shape)
+        data = initializers.generate_array(self.initializer, shape, numpy)
+
+        ginit = self._grad_initializer
+        grad = None if ginit is None else initializers.generate_array(
+            ginit, shape, numpy)
+
+        if self._initial_device >= 0:
+            data = cuda.to_gpu(data, device=self._initial_device)
+            if grad is not None:
+                grad = cuda.to_gpu(grad, device=self._initial_device)
+
+        self.data = data
+        self.grad = grad
 
     def __lt__(self, other):
         raise NotImplementedError()
