@@ -69,6 +69,8 @@ class CudnnRNNWeightConcat(function.Function):
     """
 
     def __init__(self, n_layers, states, rnn_dir, rnn_mode):
+        self._dtype = chainer.get_dtype()
+
         self.n_layers = n_layers
         self.states = states
         self.rnn_dir = _rnn_dirs[rnn_dir]
@@ -110,12 +112,12 @@ class CudnnRNNWeightConcat(function.Function):
                             w_in = out_size
 
                     type_check.expect(
-                        w_type.dtype == numpy.float32,
+                        w_type.dtype == self._dtype,
                         w_type.ndim == 2,
                         w_type.shape[0] == out_size,
                         w_type.shape[1] == w_in,
 
-                        b_type.dtype == numpy.float32,
+                        b_type.dtype == self._dtype,
                         b_type.ndim == 1,
                         b_type.shape[0] == out_size,
                     )
@@ -127,20 +129,22 @@ class CudnnRNNWeightConcat(function.Function):
         bs = inputs[ws_size:]
         out_size = ws[0].shape[0]
         in_size = ws[0].shape[1]
+        cudnn_data_type = _get_cudnn_data_type(self._dtype)
 
         # TODO(unno): Make a wrapper method to avoid access _desc directly
         rnn_desc = cudnn.create_rnn_descriptor(
             out_size, self.n_layers, self.states._desc,
             libcudnn.CUDNN_LINEAR_INPUT, self.rnn_dir,
-            self.rnn_mode, libcudnn.CUDNN_DATA_FLOAT)
+            self.rnn_mode, cudnn_data_type)
         self.rnn_desc = rnn_desc
 
-        dummy_x = cuda.cupy.empty((1, in_size, 1), numpy.float32)
+        dummy_x = cuda.cupy.empty((1, in_size, 1), dtype=self._dtype)
         x_desc = cudnn.create_tensor_nd_descriptor(dummy_x)
 
         weights_size = libcudnn.getRNNParamsSize(
-            handle, rnn_desc.value, x_desc.value, libcudnn.CUDNN_DATA_FLOAT)
-        w = cuda.cupy.empty((weights_size // 4, 1, 1), dtype=numpy.float32)
+            handle, rnn_desc.value, x_desc.value, cudnn_data_type)
+        byte_size = self._dtype.itemsize
+        w = cuda.cupy.empty((weights_size // byte_size, 1, 1), dtype=self._dtype)
         w_desc = cudnn.create_filter_descriptor(w)
 
         for layer in six.moves.range(self.n_layers):
@@ -219,6 +223,7 @@ class BaseNStepRNN(function.Function):
             candidate_list = ','.join(_rnn_modes.keys())
             raise ValueError('Invalid rnn_mode: "%s". Please select from [%s]'
                              % (rnn_mode, candidate_list))
+        self._dtype = chainer.get_dtype()
         self.rnn_dir = _rnn_dirs[rnn_dir]
         self.rnn_mode = _rnn_modes[rnn_mode]
         self.rnn_direction = _rnn_params_direction[self.rnn_dir]
@@ -234,8 +239,8 @@ class BaseNStepRNN(function.Function):
             h_type, c_type, w_type, x_type = in_types
             h_size = self.n_layers * self.rnn_direction
             type_check.expect(
-                h_type.dtype == numpy.float32,
-                c_type.dtype == numpy.float32,
+                h_type.dtype == self._dtype,
+                c_type.dtype == self._dtype,
 
                 h_type.ndim == 3,
                 h_type.shape[0] == h_size,
@@ -254,14 +259,14 @@ class BaseNStepRNN(function.Function):
             h_type, w_type, x_type = in_types
             h_size = self.n_layers * self.rnn_direction
             type_check.expect(
-                h_type.dtype == numpy.float32,
+                h_type.dtype == self._dtype,
 
                 h_type.ndim == 3,
                 h_type.shape[0] == h_size,
             )
 
         type_check.expect(
-            x_type.dtype == numpy.float32,
+            x_type.dtype == self._dtype,
             x_type.ndim == 2,
             x_type.shape[0] == self.sections[-1],
         )
