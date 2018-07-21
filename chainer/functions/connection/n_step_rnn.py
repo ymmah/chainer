@@ -144,7 +144,8 @@ class CudnnRNNWeightConcat(function.Function):
         weights_size = libcudnn.getRNNParamsSize(
             handle, rnn_desc.value, x_desc.value, cudnn_data_type)
         byte_size = self._dtype.itemsize
-        w = cuda.cupy.empty((weights_size // byte_size, 1, 1), dtype=self._dtype)
+        w = cuda.cupy.empty(
+            (weights_size // byte_size, 1, 1), dtype=self._dtype)
         w_desc = cudnn.create_filter_descriptor(w)
 
         for layer in six.moves.range(self.n_layers):
