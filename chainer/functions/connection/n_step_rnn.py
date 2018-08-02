@@ -129,7 +129,7 @@ class CudnnRNNWeightConcat(function.Function):
         bs = inputs[ws_size:]
         out_size = ws[0].shape[0]
         in_size = ws[0].shape[1]
-        cudnn_data_type = _get_cudnn_data_type(self._dtype)
+        cudnn_data_type = cudnn.get_data_type(self._dtype)
 
         # TODO(unno): Make a wrapper method to avoid access _desc directly
         rnn_desc = cudnn.create_rnn_descriptor(
