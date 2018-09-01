@@ -421,6 +421,49 @@ class TestOptionalArguments(unittest.TestCase):
             x_type, y_type = T.argname(ts, ('x',), ('y',))
 
 
+class TestVariableLengthArguments(unittest.TestCase):
+
+    def test_variable_length_argument1(self):
+        data = (numpy.zeros((1, 2, 3)).astype(numpy.float32),) * 2
+        ts = T.get_types(data, 'name', False)
+        xs_type, = T.argname(ts, ('x...',))
+        assert len(xs_type) == 2
+        assert xs_type[0] is ts[0]
+        assert xs_type[0].name == 'x[0]'
+        assert xs_type[1] is ts[1]
+        assert xs_type[1].name == 'x[1]'
+
+    def test_variable_length_arguments2(self):
+        data = (numpy.zeros((1, 2, 3)).astype(numpy.float32),) * 6
+        ts = T.get_types(data, 'name', False)
+        x_type, y_type, zs_type, w_type, u_type = T.argname(
+            ts, ('x', 'y', 'z...', 'w', 'u'))
+
+        assert x_type is ts[0]
+        assert x_type.name == 'x'
+
+        assert y_type is ts[1]
+        assert y_type.name == 'y'
+
+        assert len(zs_type) == 2
+        assert zs_type[0] is ts[2]
+        assert zs_type[0].name == 'z[0]'
+        assert zs_type[1] is ts[3]
+        assert zs_type[1].name == 'z[1]'
+
+        assert w_type is ts[4]
+        assert w_type.name == 'w'
+
+        assert u_type is ts[5]
+        assert u_type.name == 'u'
+
+    def test_too_many_variable_length_parts(self):
+        data = (numpy.zeros((1, 2, 3)).astype(numpy.float32),) * 4
+        ts = T.get_types(data, 'name', False)
+        with self.assertRaises(ValueError):
+            T.argname(ts, ('x...', 'y...'))
+
+
 class TestProd(unittest.TestCase):
 
     def test_name(self):

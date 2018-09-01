@@ -504,6 +504,58 @@ Invalid operation is performed in: {0} (Forward)
         self.actual = actual
 
 
+def _compute_variable_length_part(in_types, names):
+    """Computes the beginning and ending positions of variable length arguments
+    """
+    n_pre = 0
+    for name in names:
+        if name[-3:] == '...':
+            break
+        n_pre += 1
+
+    n_post = 0
+    for name in names[n_pre + 1:]:
+        if name[-3:] == '...':
+            raise ValueError()
+        n_post += 1
+
+    return n_pre, len(in_types) - n_post
+
+
+def _argname_variable_length(in_types, names):
+    min_len = len(names)
+    actual_len = len(in_types)
+    if not min_len <= actual_len:
+        raise InvalidType('>={} argument(s)'.format(min_len),
+                          '{} argument(s)'.format(actual_len),
+                          'Invalid number of arguments')
+
+    ret = []
+    begin, end = _compute_variable_length_part(in_types, names)
+
+    # Arguments before variable length ones
+    for in_type, name in zip(in_types[:begin], names[:begin]):
+        if isinstance(in_type, Variable):
+            in_type.name = name
+    ret += in_types[:begin]
+
+    # Varible length arguments
+    if begin != end:
+        name = names[begin][:-3]
+        for i, in_type in enumerate(in_types[begin:end]):
+            if isinstance(in_type, Variable):
+                in_type.name = name + '[' + str(i) + ']'
+        ret += [in_types[begin:end]]
+
+    # Arguments after variable length ones
+    for in_type, name in zip(in_types[end:], names[begin + 1:]):
+        if isinstance(in_type, Variable):
+            in_type.name = name
+    ret += in_types[end:]
+
+    return ret
+
+
 class _MissingArgument(object):
     def __init__(self):
         # typical attributes
@@ -562,17 +614,7 @@ class _MissingArgument(object):
 _missing_argument = _MissingArgument()
 
 
-def argname(in_types, names, optional_names=()):
-    """Assigns user friendly names for the input types.
-
-    This function also asserts that lenghts of in_types and names are the
-    same.
-
-    Args:
-        in_types (tuple of TypeInfoTuple): Tuple of type information to assign
-            name to.
-        names (tuple of str): Human-readabel names of ``in_types``.
-    """
+def _argname_fixed_length(in_types, names, optional_names):
     min_len = len(names)
     max_len = min_len + len(optional_names)
     actual_len = len(in_types)
@@ -608,6 +650,25 @@ def argname(in_types, names, optional_names=()):
 
     assert len(ret) == max_len
     return ret
+
+
+def argname(in_types, names, optional_names=()):
+    """Assigns user friendly names for the input types.
+
+    This function also asserts that lenghts of in_types and names are the
+    same.
+
+    Args:
+        in_types (tuple of TypeInfoTuple): Tuple of type information to assign
+            name to.
+        names (tuple of str): Human-readabel names of ``in_types``.
+    """
+    if any(name[-3:] == '...' for name in names):
+        if len(optional_names) != 0:
+            raise ValueError()
+        return _argname_variable_length(in_types, names)
+    else:
+        return _argname_fixed_length(in_types, names, optional_names)
 
 
 def expect(*bool_exprs):
