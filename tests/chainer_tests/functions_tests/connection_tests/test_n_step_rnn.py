@@ -46,21 +46,10 @@ def _wrap_variable(x):
         return chainer.Variable(x)
 
 
-@testing.parameterize(*testing.product_dict(
-    [{'dtype': numpy.float16,
-      'forward_options': {'atol': 5e-3, 'rtol': 5e-3},
-      'backward_options': {'atol': 1e0, 'rtol': 1e0}},
-     {'dtype': numpy.float32,
-      'forward_options': {'atol': 1e-4, 'rtol': 1e-4},
-      'backward_options': {'atol': 1e-2, 'rtol': 5e-2}},
-     {'dtype': numpy.float64,
-      'forward_options': {'atol': 1e-4, 'rtol': 1e-4},
-      'backward_options': {'atol': 1e-2, 'rtol': 5e-2}},
-     ],
-    [{'activation': 'tanh'},
-     {'activation': 'relu'},
-     ],
-))
+@testing.parameterize(*testing.product({
+    'dtype': [numpy.float16, numpy.float32, numpy.float64],
+    'activation': ['tanh', 'relu']
+}))
 class TestNStepRNN(unittest.TestCase):
 
     batches = [3, 2, 1]
@@ -91,6 +80,12 @@ class TestNStepRNN(unittest.TestCase):
             [(b, self.out_size) for b in self.batches], dtype=self.dtype)
         self.dhy = _shaped_random(h_shape, dtype=self.dtype)
 
+        if self.dtype == numpy.float16:
+            self.check_forward_options = {'atol': 5e-3, 'rtol': 5e-3}
+            self.check_backward_options = {'atol': 1e0, 'rtol': 1e0}
+        else:
+            self.check_forward_options = {'atol': 1e-4, 'rtol': 1e-4}
+            self.check_backward_options = {'atol': 1e-2, 'rtol': 5e-2}
 
     def check_forward(
             self, h_data, xs_data, ws_data, bs_data):
@@ -121,9 +116,11 @@ class TestNStepRNN(unittest.TestCase):
 
                 x = e_h
 
-            testing.assert_allclose(ys[ind].data, x, **self.forward_options)
+            testing.assert_allclose(
+                ys[ind].data, x, **self.check_forward_options)
 
-        testing.assert_allclose(hy.data, e_hy, **self.forward_options)
+        testing.assert_allclose(
+            hy.data, e_hy, **self.check_forward_options)
 
     def test_forward_cpu(self):
         self.check_forward(self.hx, self.xs, self.ws, self.bs)
@@ -166,7 +163,8 @@ class TestNStepRNN(unittest.TestCase):
                 activation=self.activation)
             return (hy, ) + ys
 
-        gradient_check.check_backward(f, args, grads, **self.backward_options)
+        gradient_check.check_backward(
+            f, args, grads, **self.check_backward_options)
 
     @condition.retry(3)
     def test_backward_cpu(self):
@@ -256,21 +254,10 @@ class TestNStepRNN(unittest.TestCase):
         self.check_call_cudnn_backward('auto')
 
 
-@testing.parameterize(*testing.product_dict(
-    [{'dtype': numpy.float16,
-      'forward_options': {'atol': 5e-3, 'rtol': 5e-3},
-      'backward_options': {'atol': 3e0, 'rtol': 3e0}},
-     {'dtype': numpy.float32,
-      'forward_options': {'atol': 1e-4, 'rtol': 1e-4},
-      'backward_options': {'atol': 1e-2, 'rtol': 5e-2}},
-     {'dtype': numpy.float64,
-      'forward_options': {'atol': 1e-4, 'rtol': 1e-4},
-      'backward_options': {'atol': 1e-2, 'rtol': 5e-2}},
-     ],
-    [{'activation': 'tanh'},
-     {'activation': 'relu'},
-     ],
-))
+@testing.parameterize(*testing.product({
+    'dtype': [numpy.float16, numpy.float32, numpy.float64],
+    'activation': ['tanh', 'relu']
+}))
 class TestNStepBiRNN(unittest.TestCase):
 
     batches = [3, 2, 1]
@@ -305,6 +292,12 @@ class TestNStepBiRNN(unittest.TestCase):
             [(b, self.out_size * 2) for b in self.batches], dtype=self.dtype)
         self.dhy = _shaped_random(h_shape, dtype=self.dtype)
 
+        if self.dtype == numpy.float16:
+            self.check_forward_options = {'atol': 5e-3, 'rtol': 5e-3}
+            self.check_backward_options = {'atol': 3e0, 'rtol': 3e0}
+        else:
+            self.check_forward_options = {'atol': 1e-4, 'rtol': 1e-4}
+            self.check_backward_options = {'atol': 1e-2, 'rtol': 5e-2}
 
     def check_forward(
             self, h_data, xs_data, ws_data, bs_data):
@@ -363,9 +356,10 @@ class TestNStepBiRNN(unittest.TestCase):
                        zip(xf, xb)]
 
         for k, (ysi, xsi) in enumerate(zip(ys, xs_next)):
-            testing.assert_allclose(ysi.data, xsi, **self.forward_options)
+            testing.assert_allclose(
+                ysi.data, xsi, **self.check_forward_options)
 
-        testing.assert_allclose(hy.data, e_hy, **self.forward_options)
+        testing.assert_allclose(hy.data, e_hy, **self.check_forward_options)
 
     def test_forward_cpu(self):
         self.check_forward(self.hx, self.xs, self.ws, self.bs)
@@ -408,7 +402,8 @@ class TestNStepBiRNN(unittest.TestCase):
                 activation=self.activation)
             return (hy, ) + ys
 
-        gradient_check.check_backward(f, args, grads, **self.backward_options)
+        gradient_check.check_backward(
+            f, args, grads, **self.check_backward_options)
 
     @condition.retry(3)
     def test_backward_cpu(self):
