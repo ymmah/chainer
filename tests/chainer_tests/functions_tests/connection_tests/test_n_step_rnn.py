@@ -82,7 +82,8 @@ class TestNStepRNN(unittest.TestCase):
 
         if self.dtype == numpy.float16:
             self.check_forward_options = {'atol': 5e-3, 'rtol': 5e-3}
-            self.check_backward_options = {'atol': 1e0, 'rtol': 1e0}
+            self.check_backward_options = {
+                'atol': 1e-2, 'rtol': 1e-2, 'dtype': numpy.float64}
         else:
             self.check_forward_options = {'atol': 1e-4, 'rtol': 1e-4}
             self.check_backward_options = {'atol': 1e-2, 'rtol': 5e-2}
@@ -294,7 +295,8 @@ class TestNStepBiRNN(unittest.TestCase):
 
         if self.dtype == numpy.float16:
             self.check_forward_options = {'atol': 5e-3, 'rtol': 5e-3}
-            self.check_backward_options = {'atol': 3e0, 'rtol': 3e0}
+            self.check_backward_options = {
+                'atol': 1e-2, 'rtol': 1e-2, 'dtype': numpy.float64}
         else:
             self.check_forward_options = {'atol': 1e-4, 'rtol': 1e-4}
             self.check_backward_options = {'atol': 1e-2, 'rtol': 5e-2}
